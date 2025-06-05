@@ -6,6 +6,7 @@ import Login from './pages/Login/Login';
 import Layout from './components/Layout';
 import Home from './pages/Home/Home';
 import Product from './pages/Product/Product';
+import ProductAddForm from './pages/Product/ProductAddForm';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -16,6 +17,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route path="/" element={<Layout />}>
           <Route path="home" element={<Home />} />
           <Route path="products" element={<Product />} />
+          <Route path="products/add" element={<ProductAddForm />} />
         </Route>
       </Routes>
     </BrowserRouter>
