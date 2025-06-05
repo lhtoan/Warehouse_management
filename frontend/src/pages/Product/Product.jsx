@@ -10,42 +10,34 @@ export default function Product() {
     async function loadProducts() {
       try {
         const data = await fetchProducts();
-
-        // Mỗi dòng là một biến thể riêng biệt
-        const mapped = data.map((item) => {
-          let mauSac = '';
-          let size = '';
-          const parts = item.bien_the?.split(',') || [];
-
-          parts.forEach(part => {
-            if (part.includes('Màu:')) {
-              mauSac = part.replace('Màu:', '').trim();
-            }
-            if (part.includes('Size:')) {
-              size = part.replace('Size:', '').trim();
-            }
+  
+        // Duyệt từng sản phẩm và biến thể
+        const mapped = data.flatMap((item) => {
+          return item.bien_the.map(variant => {
+            const { Màu: mauSac = '', Size: size = '' } = variant.thuoc_tinh || {};
+  
+            return {
+              maSanPham: item.ma_san_pham,
+              tenSanPham: item.ten_san_pham,
+              hinhAnh: variant.hinh_anh || item.hinh_anh,
+              mauSac,
+              size,
+              giaBan: Number(variant.gia_ban),
+              soLuong: variant.so_luong || 0,
+              loHang: new Date(variant.ngay_nhap).toLocaleDateString('vi-VN'),
+            };
           });
-
-          return {
-            maSanPham: item.ma_san_pham,
-            tenSanPham: item.ten_san_pham,
-            hinhAnh: item.hinh_anh,
-            mauSac,
-            size,
-            giaBan: Number(item.gia_ban),
-            soLuong: item.so_luong || 0,
-            loHang: new Date(item.ngay_nhap).toLocaleDateString('vi-VN'),
-          };
         });
-
+  
         setProductData(mapped);
       } catch (error) {
         console.error('Lỗi:', error);
       }
     }
-
+  
     loadProducts();
   }, []);
+  
 
   return (
     <div className='product-page'>
@@ -82,7 +74,7 @@ export default function Product() {
               <td>{sp.giaBan.toLocaleString()} đ</td>
               <td>{sp.soLuong}</td>
               <td>
-                <img src={`images/${sp.hinhAnh}`} alt={sp.tenSanPham} width="80" />
+                <img src={`http://localhost:3000/images/${sp.hinhAnh}`} alt={sp.tenSanPham} width="80" />
               </td>
               <td>
                 <button className="btn btn-edit">Sửa</button>

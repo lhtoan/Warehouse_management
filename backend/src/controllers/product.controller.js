@@ -4,13 +4,16 @@ exports.getAllProducts = async (req, res) => {
   try {
     const [rows] = await db.execute(`
       SELECT
-        sp.ma_san_pham AS ma_san_pham,
-        sp.ten_san_pham AS ten_san_pham,
-        sp.hinh_anh,
-        GROUP_CONCAT(DISTINCT CONCAT(tt.ten_thuoc_tinh, ': ', gt1.gia_tri) ORDER BY tt.ten_thuoc_tinh SEPARATOR ', ') AS bien_the,
+        sp.id AS san_pham_id,
+        sp.ma_san_pham,
+        sp.ten_san_pham,
+        bt.id AS bien_the_id,
+        bt.hinh_anh AS hinh_anh_bien_the,
+        tt.ten_thuoc_tinh,
+        gt1.gia_tri,
         btlh.gia_ban,
-        lh.ngay_nhap,
-        btlh.so_luong
+        btlh.so_luong,
+        lh.ngay_nhap
       FROM san_pham sp
       JOIN bien_the_san_pham bt ON bt.san_pham_id = sp.id
       JOIN gia_tri_bien_the gtv ON gtv.bien_the_id = bt.id
@@ -18,128 +21,176 @@ exports.getAllProducts = async (req, res) => {
       JOIN thuoc_tinh tt ON tt.id = gt1.thuoc_tinh_id
       JOIN bien_the_lo_hang btlh ON btlh.bien_the_id = bt.id
       JOIN lo_hang lh ON lh.id = btlh.lo_hang_id
-      GROUP BY sp.id, bt.id, btlh.gia_ban, lh.ngay_nhap, btlh.so_luong
+      ORDER BY sp.id, bt.id, tt.ten_thuoc_tinh;
+
     `);
 
-    const formatted = rows.map(row => ({
-      ma_san_pham: row.ma_san_pham,
-      ten_san_pham: row.ten_san_pham,
-      hinh_anh: row.hinh_anh,
-      bien_the: row.bien_the,
-      gia_ban: row.gia_ban,
-      ngay_nhap: row.ngay_nhap,
-      so_luong: row.so_luong
-    }));
+    // Gom nhóm sản phẩm
+    const productsMap = new Map();
 
-    res.json(formatted);
+    for (const row of rows) {
+      const {
+        san_pham_id,
+        ma_san_pham,
+        ten_san_pham,
+        hinh_anh_san_pham,
+        bien_the_id,
+        hinh_anh_bien_the,
+        ten_thuoc_tinh,
+        gia_tri,
+        gia_ban,
+        so_luong,
+        ngay_nhap
+      } = row;
+
+      if (!productsMap.has(san_pham_id)) {
+        productsMap.set(san_pham_id, {
+          ma_san_pham,
+          ten_san_pham,
+          hinh_anh: hinh_anh_san_pham,
+          bien_the: []
+        });
+      }
+
+      const product = productsMap.get(san_pham_id);
+
+      let variant = product.bien_the.find(bt => bt.bien_the_id === bien_the_id);
+      if (!variant) {
+        variant = {
+          bien_the_id,
+          hinh_anh: hinh_anh_bien_the,
+          thuoc_tinh: {},
+          gia_ban,
+          so_luong,
+          ngay_nhap
+        };
+        product.bien_the.push(variant);
+      }
+
+      variant.thuoc_tinh[ten_thuoc_tinh] = gia_tri;
+    }
+
+    const result = Array.from(productsMap.values());
+
+    res.json(result);
   } catch (error) {
     console.error('Lỗi truy xuất sản phẩm:', error);
     res.status(500).json({ error: 'Lỗi máy chủ' });
   }
 };
 
+// POST /products
 exports.createProduct = async (req, res) => {
-  const connection = await db.getConnection(); // Lấy connection, nếu dùng pool
+  const connection = await db.getConnection();
   try {
-    await connection.beginTransaction();
+    const { ma_san_pham, ten_san_pham } = req.body;
 
-    // Lấy dữ liệu từ req.body
-    const {
-      ma_san_pham,
-      ten_san_pham,
-      bien_the_list
-    } = req.body;
-
-    // Lấy tên file ảnh upload từ req.file (multer sẽ gán file ở đây)
-    const hinh_anh = req.file ? req.file.filename : null;
-
-    // 1. Kiểm tra sản phẩm đã tồn tại chưa
+    // Kiểm tra mã sản phẩm đã tồn tại chưa
     const [existing] = await connection.execute(
       'SELECT ma_san_pham FROM san_pham WHERE ma_san_pham = ?',
       [ma_san_pham]
     );
     if (existing.length > 0) {
-      await connection.rollback();
       return res.status(400).json({ error: 'Mã sản phẩm đã tồn tại' });
     }
 
-    // 2. Thêm sản phẩm chính với tên ảnh mới lấy
-    const [resultSanPham] = await connection.execute(
-      'INSERT INTO san_pham (ma_san_pham, ten_san_pham, hinh_anh) VALUES (?, ?, ?)',
-      [ma_san_pham, ten_san_pham, hinh_anh]
+    // Chèn sản phẩm mới (chỉ 2 cột)
+    const [result] = await connection.execute(
+      'INSERT INTO san_pham (ma_san_pham, ten_san_pham) VALUES (?, ?)',
+      [ma_san_pham, ten_san_pham]
     );
-    const san_pham_id = resultSanPham.insertId;
 
-    // 3. Xử lý biến thể (giữ nguyên như bạn đã viết)
-    // Chú ý: bien_the_list là chuỗi JSON nếu gửi từ form-data, cần parse lại
-    let bienTheListParsed = bien_the_list;
-    if (typeof bien_the_list === 'string') {
-      bienTheListParsed = JSON.parse(bien_the_list);
-    }
-
-    for (const bien_the of bienTheListParsed) {
-      const { mau_sac, size, gia_ban, so_luong, ngay_nhap } = bien_the;
-
-      const [resultBienThe] = await connection.execute(
-        'INSERT INTO bien_the_san_pham (san_pham_id) VALUES (?)',
-        [san_pham_id]
-      );
-      const bien_the_id = resultBienThe.insertId;
-
-      const [thuocTinhRows] = await connection.execute(
-        "SELECT id, ten_thuoc_tinh FROM thuoc_tinh WHERE ten_thuoc_tinh IN ('Size', 'Màu')"
-      );
-
-      const sizeThuocTinh = thuocTinhRows.find(tt => tt.ten_thuoc_tinh === 'Size');
-      const mauThuocTinh = thuocTinhRows.find(tt => tt.ten_thuoc_tinh === 'Màu');
-
-      if (!sizeThuocTinh || !mauThuocTinh) {
-        await connection.rollback();
-        return res.status(500).json({ error: 'Thiếu thuộc tính Size hoặc Màu trong DB' });
-      }
-
-      const [[sizeGiaTri]] = await connection.execute(
-        'SELECT id FROM gia_tri_thuoc_tinh WHERE thuoc_tinh_id = ? AND gia_tri = ?',
-        [sizeThuocTinh.id, size]
-      );
-      if (!sizeGiaTri) {
-        await connection.rollback();
-        return res.status(400).json({ error: `Giá trị Size "${size}" không tồn tại` });
-      }
-
-      const [[mauGiaTri]] = await connection.execute(
-        'SELECT id FROM gia_tri_thuoc_tinh WHERE thuoc_tinh_id = ? AND gia_tri = ?',
-        [mauThuocTinh.id, mau_sac]
-      );
-      if (!mauGiaTri) {
-        await connection.rollback();
-        return res.status(400).json({ error: `Giá trị Màu "${mau_sac}" không tồn tại` });
-      }
-
-      await connection.execute(
-        'INSERT INTO gia_tri_bien_the (bien_the_id, gia_tri_thuoc_tinh_id) VALUES (?, ?), (?, ?)',
-        [bien_the_id, sizeGiaTri.id, bien_the_id, mauGiaTri.id]
-      );
-
-      const [resultLoHang] = await connection.execute(
-        'INSERT INTO lo_hang (ma_lo, ngay_nhap) VALUES (?, ?)',
-        [`LO_${Date.now()}_${Math.floor(Math.random()*1000)}`, ngay_nhap]
-      );
-      const lo_hang_id = resultLoHang.insertId;
-
-      await connection.execute(
-        'INSERT INTO bien_the_lo_hang (bien_the_id, lo_hang_id, gia_ban, so_luong) VALUES (?, ?, ?, ?)',
-        [bien_the_id, lo_hang_id, gia_ban, so_luong]
-      );
-    }
-
-    await connection.commit();
-    res.status(201).json({ message: 'Tạo sản phẩm thành công' });
+    res.status(201).json({
+      message: 'Tạo sản phẩm thành công',
+      san_pham_id: result.insertId
+    });
   } catch (error) {
-    await connection.rollback();
     console.error(error);
     res.status(500).json({ error: 'Lỗi server khi tạo sản phẩm' });
   } finally {
     connection.release();
   }
 };
+
+
+// POST /products/:id/variant
+exports.addVariant = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const { id: san_pham_id } = req.params;
+    const { mau_sac, size, gia_ban, so_luong, lo_hang_id } = req.body;
+    const hinh_anh = req.file ? req.file.filename : null;
+
+    await connection.beginTransaction();
+
+    // Kiểm tra sản phẩm có tồn tại không
+    const [sanPhamRows] = await connection.execute(
+      'SELECT id FROM san_pham WHERE id = ?',
+      [san_pham_id]
+    );
+    if (sanPhamRows.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'Sản phẩm không tồn tại' });
+    }
+
+    // Kiểm tra lô hàng
+    const [loHangRows] = await connection.execute(
+      'SELECT id FROM lo_hang WHERE id = ?',
+      [lo_hang_id]
+    );
+    if (loHangRows.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({ error: `Lô hàng ID ${lo_hang_id} không tồn tại` });
+    }
+
+    // Tạo biến thể
+    const [resultBienThe] = await connection.execute(
+      'INSERT INTO bien_the_san_pham (san_pham_id, hinh_anh) VALUES (?, ?)',
+      [san_pham_id, hinh_anh]
+    );
+    const bien_the_id = resultBienThe.insertId;
+
+    // Lấy thuộc tính
+    const [thuocTinhRows] = await connection.execute(
+      "SELECT id, ten_thuoc_tinh FROM thuoc_tinh WHERE ten_thuoc_tinh IN ('Size', 'Màu')"
+    );
+    const sizeTT = thuocTinhRows.find(tt => tt.ten_thuoc_tinh === 'Size');
+    const mauTT = thuocTinhRows.find(tt => tt.ten_thuoc_tinh === 'Màu');
+
+    const [[sizeGT]] = await connection.execute(
+      'SELECT id FROM gia_tri_thuoc_tinh WHERE thuoc_tinh_id = ? AND gia_tri = ?',
+      [sizeTT.id, size]
+    );
+    const [[mauGT]] = await connection.execute(
+      'SELECT id FROM gia_tri_thuoc_tinh WHERE thuoc_tinh_id = ? AND gia_tri = ?',
+      [mauTT.id, mau_sac]
+    );
+
+    if (!sizeGT || !mauGT) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'Giá trị thuộc tính không hợp lệ' });
+    }
+
+    // Gắn thuộc tính
+    await connection.execute(
+      'INSERT INTO gia_tri_bien_the (bien_the_id, gia_tri_thuoc_tinh_id) VALUES (?, ?), (?, ?)',
+      [bien_the_id, sizeGT.id, bien_the_id, mauGT.id]
+    );
+
+    // Gắn lô hàng
+    await connection.execute(
+      'INSERT INTO bien_the_lo_hang (bien_the_id, lo_hang_id, gia_ban, so_luong) VALUES (?, ?, ?, ?)',
+      [bien_the_id, lo_hang_id, gia_ban, so_luong]
+    );
+
+    await connection.commit();
+    res.status(201).json({ message: 'Thêm biến thể thành công', bien_the_id });
+  } catch (err) {
+    await connection.rollback();
+    console.error(err);
+    res.status(500).json({ error: 'Lỗi khi thêm biến thể' });
+  } finally {
+    connection.release();
+  }
+};
+
