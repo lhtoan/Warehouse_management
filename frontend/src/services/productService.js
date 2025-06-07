@@ -27,15 +27,6 @@ export async function fetchSizes() {
   return data;
 }
 
-export async function fetchBatches() {
-  const response = await fetch(`${API_URL}/batches`);
-  if (!response.ok) {
-    throw new Error('Lỗi khi lấy danh sách lô hàng');
-  }
-  const data = await response.json();
-  return data;
-}
-
 // Tạo sản phẩm
 export async function createProduct(formData) {
   // formData là object FormData, chứa fields và file hinh_anh

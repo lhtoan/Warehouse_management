@@ -24,10 +24,10 @@ export default function Sidebar() {
         </li>
         <li>
           <NavLink
-            to="/inventory"
+            to="/warehouse"
             className={({ isActive }) => isActive ? 'nav-active' : ''}
           >
-            Tồn kho
+            Kho hàng
           </NavLink>
         </li>
         <li>

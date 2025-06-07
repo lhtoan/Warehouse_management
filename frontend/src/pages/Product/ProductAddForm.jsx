@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './ProductAddForm.css';
-import { fetchColors, fetchSizes, fetchBatches, createProduct, createVariant } from '../../services/productService';
+import { fetchColors, fetchSizes, createProduct, createVariant } from '../../services/productService';
+import { fetchBatches } from '../../services/batchesService';
 import { useNavigate } from 'react-router-dom';
 
 export default function ProductForm() {

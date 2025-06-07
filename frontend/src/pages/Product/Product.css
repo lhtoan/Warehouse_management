@@ -39,10 +39,16 @@
     border: 1px solid #ddd;
     padding: 8px;
     text-align: center;
+    height: 100px;
 }
 
 .product-table img {
-    max-height: 60px;
+    max-height: 100px;
+    max-width: 100px;
+}
+
+.product-table tr {
+    min-height: 200px;
 }
 
 .popup-overlay {
@@ -95,4 +101,28 @@
 .btn-cancel {
     background-color: #dc3545;
     color: white;
+}
+
+.pagination {
+    margin-top: 20px;
+    text-align: center;
+}
+
+.pagination button {
+    margin: 0 4px;
+    padding: 6px 12px;
+    border: 1px solid #ccc;
+    background-color: white;
+    cursor: pointer;
+}
+
+.pagination button.active {
+    background-color: #0D92F4;
+    color: white;
+    border-color: #0D92F4;
+}
+
+.pagination button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
