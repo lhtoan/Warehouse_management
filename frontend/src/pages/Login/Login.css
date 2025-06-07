@@ -41,6 +41,7 @@
     color: #007bff;
     margin: 0;
     padding-bottom: 15px;
+    border: none;
 }
 
 .input-error {

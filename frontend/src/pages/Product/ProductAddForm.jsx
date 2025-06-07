@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import './ProductAddForm.css';
-import { fetchColors, fetchSizes, fetchBatches } from '../../services/productService';
+import { fetchColors, fetchSizes, fetchBatches, createProduct, createVariant } from '../../services/productService';
+import { useNavigate } from 'react-router-dom';
 
 export default function ProductForm() {
+  const navigate = useNavigate();
+
   const [productInfo, setProductInfo] = useState({
     ma_san_pham: '',
     ten_san_pham: '',
   });
 
   const [variants, setVariants] = useState([
-    { mauSac: '', size: '', giaBan: '', soLuong: '', batchId: '', hinhAnh: '' },
+    { mauSac: '', size: '', giaBan: '', soLuong: '', batchId: '', hinhAnh: '', preview: '' },
   ]);
 
   const [showVariantForm, setShowVariantForm] = useState(false);
@@ -17,8 +20,10 @@ export default function ProductForm() {
   const [colors, setColors] = useState([]);
   const [sizes, setSizes] = useState([]);
   const [batches, setBatches] = useState([]);
+  const [showPopup, setShowPopup] = useState(false);
+  const [popupMessage, setPopupMessage] = useState('');
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);  // dùng chung cho toàn bộ form
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -49,7 +54,7 @@ export default function ProductForm() {
     const year = date.getFullYear();
     return `${day}/${month}/${year}`;
   };
-  
+
   const handleCreateProduct = (e) => {
     e.preventDefault();
     if (productInfo.ma_san_pham && productInfo.ten_san_pham) {
@@ -62,7 +67,7 @@ export default function ProductForm() {
   const handleAddVariant = () => {
     setVariants([
       ...variants,
-      { mauSac: '', size: '', giaBan: '', soLuong: '', batchId: '', hinhAnh: '' },
+      { mauSac: '', size: '', giaBan: '', soLuong: '', batchId: '', hinhAnh: '', preview: '' },
     ]);
   };
 
@@ -77,35 +82,59 @@ export default function ProductForm() {
     setVariants(updated);
   };
 
-  const handleSubmitAll = (e) => {
+  // Hàm xử lý submit tạo sản phẩm + biến thể
+  const handleSubmitAll = async (e) => {
     e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      // 1. Tạo FormData cho sản phẩm (chỉ có text thôi)
+      const formDataProduct = new FormData();
+      formDataProduct.append('ma_san_pham', productInfo.ma_san_pham);
+      formDataProduct.append('ten_san_pham', productInfo.ten_san_pham);
 
-    const bien_the = variants.map((v) => ({
-      thuoc_tinh: {
-        Màu: v.mauSac,
-        Size: v.size,
-      },
-      gia_ban: Number(v.giaBan),
-      so_luong: Number(v.soLuong),
-      lo_hang_id: v.batchId,
-      hinh_anh: v.hinhAnh,
-    }));
+      // 2. Gọi API tạo sản phẩm
+      const productData = await createProduct(formDataProduct);
+      const productId = productData.san_pham_id;
 
-    const payload = {
-      ...productInfo,
-      bien_the,
-    };
+      // 3. Duyệt và tạo từng biến thể
+      for (const variant of variants) {
+        const formDataVariant = new FormData();
+        formDataVariant.append('mau_sac', variant.mauSac);
+        formDataVariant.append('size', variant.size);
+        formDataVariant.append('gia_ban', variant.giaBan);
+        formDataVariant.append('so_luong', variant.soLuong);
+        formDataVariant.append('lo_hang_id', variant.batchId);
+        formDataVariant.append('hinh_anh', variant.hinhAnh);
 
-    console.log('📦 Gửi dữ liệu:', payload);
-    alert('Tạo sản phẩm kèm biến thể thành công!');
+        await createVariant(productId, formDataVariant);
+      }
 
-    setProductInfo({ ma_san_pham: '', ten_san_pham: '' });
-    setVariants([{ mauSac: '', size: '', giaBan: '', soLuong: '', batchId: '', hinhAnh: '' }]);
-    setShowVariantForm(false);
+      setPopupMessage('Tạo sản phẩm và các biến thể thành công!');
+
+      // Reset form
+      setProductInfo({ ma_san_pham: '', ten_san_pham: '' });
+      setVariants([{ mauSac: '', size: '', giaBan: '', soLuong: '', batchId: '', hinhAnh: '', preview: '' }]);
+      setShowVariantForm(false);
+      setLoading(false);
+
+      setShowPopup(true);
+
+      setTimeout(() => {
+        setShowPopup(false);
+        navigate('/products');
+      }, 1000);
+
+      
+    } catch (err) {
+      setError(err.message || 'Lỗi khi tạo sản phẩm hoặc biến thể');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if (loading) return <p>Đang tải dữ liệu...</p>;
-  if (error) return <p>Lỗi: {error}</p>;
+  if (loading) return;
+  if (error) return <p style={{color: 'red'}}>Lỗi: {error}</p>;
 
   return (
     <form className="product-form" onSubmit={handleSubmitAll}>
@@ -250,6 +279,12 @@ export default function ProductForm() {
           </button>
         </div>
       )}
+      {showPopup && (
+        <div className="popup-notification">
+          {popupMessage}
+        </div>
+      )}
+
     </form>
   );
 }
